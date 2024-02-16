@@ -129,7 +129,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
                 # this block is accessed just once during the measurement
                 self.getFreqFrom('Raw S11')
                 self.runCalibration() 
-                raise Error('CALIBRATION ALGORITHM GENERATED') # this is for debugging
+                self.writeAndLog('Ran calibration', bCheckError=False)
             
             self.signal_calls[quant.name[-3:]] += 1 # Updates the number of times the particular trace has been requested
             x = int(quant.name[-2]) # the second to last character in the quantity name. in 'S21' it is 2
@@ -138,9 +138,11 @@ class Driver(InstrumentDriver.InstrumentWorker):
             CorrectedTrace = CorrectedMatrix.s[:, x-1, y-1]
             value = quant.getTraceDict(CorrectedTrace, x=self.DUT_frequency)
         # else, if Labber is starting the driver, therefore no raw traces have been provided to the calibrator
-        else:
+        elif quant.name.startswith('Corrected') and not self.already_opened[quant.name[-3:]]:
             # just return the quantity value
             self.already_opened[quant.name[-3:]] = True
+            value = quant.getValue()
+        else:
             value = quant.getValue()
         return value
 
