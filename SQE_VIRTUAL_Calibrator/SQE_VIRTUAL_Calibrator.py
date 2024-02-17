@@ -3,18 +3,55 @@
 import InstrumentDriver
 import numpy as np
 import skrf as rf
+import scipy
 from skrf.media import Coaxial
+from typing import Union, Optional
 
 class Error(Exception):
     pass
 
+def generate_equidistant_array(
+    start: Union[int, float], 
+    stop: Optional[Union[int, float]]=None, 
+    step: Optional[Union[int, float]]=None, 
+    npoints: Optional[int]=None
+    ):
+    if stop is not None:
+        if step is not None and npoints is None:
+            return np.arange(start, stop+step, step)
+        elif npoints is not None:
+            return np.linspace(start, stop, npoints)
+        else:
+            raise ValueError("You must specify two of stop, step, npoints") 
+    else:
+        if step is not None and npoints is not None:
+            stop = start + (npoints - 1) * step
+            return np.linspace(start, stop, npoints)
+        else:
+            raise ValueError("You must specify two of stop, step, npoints")
+
+def tryAttrs(myDict: dict, attr1, attr2):
+    try:
+        val1 = myDict[attr1]
+    except KeyError:
+        val1 = None
+    try:
+        val2 = myDict[attr2]
+    except KeyError:
+        val2 = None
+    
+    if val1 is not None and val2 is not None and val1 != val2:
+        raise ValueError(f"Values for '{attr1}' and '{attr2}' are different")
+
+    return val1 if val1 is not None else val2
+
 class Driver(InstrumentDriver.InstrumentWorker):
-    """ This class implements a S-parameter calibrator driver"""
+    """ This class implements a S-parameter calibrator for 2-port networks"""
 
     def performOpen(self, options={}):
 
         self.cal_alg = None
-        self.signal_calls = {'S11': 0, 'S12': 0, 'S21': 0, 'S22': 0}
+        #self.signal_calls = {'S11': 0, 'S12': 0, 'S21': 0, 'S22': 0} # keeps trace of the times a corrected trace has been requested, so that the corrected matrix is gneerated just once per step
         self.already_opened = {'S11': False, 'S12': False, 'S21': False, 'S22': False}
         self.getMeasured()
         self.getIdeals()
@@ -92,54 +129,75 @@ class Driver(InstrumentDriver.InstrumentWorker):
 
     def performGetValue(self, quant, options={}):
         """Perform the Get Value instrument operation"""
+        
+        # If the requested quantitity is a Corrected S-parameter and the virtual driver has been already started
         if quant.name.startswith('Corrected') and self.already_opened[quant.name[-3:]]:
-            self.signal_calls[quant.name[-3:]] += 1
+            # if self.isFinalCall(options):
+            #     self.log('is final call')
+            if self.cal_alg is None:
+                # this block is accessed just once during the measurement
+                self.getFreqFrom('Raw S11')
+                self.runCalibration() 
+                self.log('Ran calibration', bCheckError=False)
+            
+            #self.signal_calls[quant.name[-3:]] += 1 # Updates the number of times the particular trace has been requested
             x = int(quant.name[-2]) # the second to last character in the quantity name. in 'S21' it is 2
             y = int(quant.name[-1])  # the last character in the quantity name. in 'S21' it is 1
-            if self.cal_alg is None:
-                self.runCalibration() # this line is accessed just once during the whole measurement
-                raise Error('CALIBRATION ALGORITHM GENERATED')
-            CorrectedNetwork = self.getCorrectedNetwork() # this line uses the calibration algorithm generated above to compute the corrected S matrix
-            CorrectedTrace = CorrectedNetwork.s[:, x-1, y-1]
+            self.log(f'Requested correction of S{x}{y}')
+            CorrectedMatrix = self.getCorrectedMatrix() # this line uses the calibration algorithm generated above to compute the corrected S matrix
+            CorrectedTrace = CorrectedMatrix.s[:, x-1, y-1]
             value = quant.getTraceDict(CorrectedTrace, x=self.DUT_frequency)
-        else:
+            self.log(f'Correction of S{x}{y} was successful')
+        # else, if Labber is starting the driver, therefore no raw traces have been provided to the calibrator
+        elif quant.name.startswith('Corrected') and not self.already_opened[quant.name[-3:]]:
             # just return the quantity value
             self.already_opened[quant.name[-3:]] = True
             value = quant.getValue()
+        else:
+            value = quant.getValue()
         return value
-    
-    def runCalibration(self):
 
-        # Retrieving DUT frequency object and making checks on it
+    
+    def getFreqFrom(self, quant_name: str):
+        '''
+        Retrieves the frequency range of the particular measurement.
+        '''
         #DUT_Dict = self.readValuefromOther('Raw S11')
-        DUT_Dict = self.getValue('Raw S11')
+        DUT_Dict = DUT_Dict = self.getValue(quant_name)
         if DUT_Dict is None:
             raise ValueError('No Trace received')
-        error_message = ''
-        for key in DUT_Dict.keys():
-            error_message += key+ ', '
-        startFreq = DUT_Dict['t0']
-        stepFreq = DUT_Dict['dt']
-        npoints = DUT_Dict['shape']
-        f = np.linspace(startFreq, startFreq+npoints*stepFreq, npoints)
-        if f[-1] > self.standard_frequency[-1] or f[0] < self.standard_frequency[0]: # i.e. if the frequency range of the DUT is not included in that of the standards
-                raise ValueError("The DUT S-parameters are measured over a frequency range not completely included in that of the measured standards!")
+        freqStart = tryAttrs(DUT_Dict, 'x0', 't0')
+        freqStop = tryAttrs(DUT_Dict, 'x1', 't1')
+        freqStep = tryAttrs(DUT_Dict, 'dx', 'dt')
+        npoints = tryAttrs(DUT_Dict, 'npoints', 'shape')
+        if isinstance(npoints, tuple):
+            npoints = npoints[0]
+        f =  generate_equidistant_array(start=freqStart, stop=freqStop, step=freqStep, npoints=npoints)
+        self.log(f'Freq start: {f[0]:.3g}, freq stop: {f[-1]:.3g}, npoints: {len(f)}')
+        if f[-1] > self.standard_frequency[-1] or f[0] < self.standard_frequency[0]:
+            raise ValueError("The measurement is being performed over a frequency range not completely included in that of the measured standards!")
         self.DUT_frequency = f
-
-        # Since it was verified the DUT frequency range is included in that of the standards,
-        # the latter are interpolated to the former
+        
+    def runCalibration(self):
+        
+        #Interpolating the measured standards to the measuremenet frequency range
         interp_sw_terms = self.switch_terms
         if self.switch_terms is not None:
-            interp_sw_terms.interpolate(f)
+            interp_sw_terms.interpolate_self(self.DUT_frequency)
+            self.log(f'{interp_sw_terms.s.shape}')
             interp_sw_terms = (interp_sw_terms.s11, interp_sw_terms.s22)
 
         interp_iso = self.isolation
         if self.isolation is not None:
-            interp_iso.interpolate(f)
+            interp_iso.interpolate_self(self.DUT_frequency)
+            self.log(f'{interp_iso.s.shape}')
 
         interp_meas = self.measured
         for meas in interp_meas:
-            meas.interpolate(f)
+            meas.interpolate_self(self.DUT_frequency)
+        self.log(f'{interp_meas[0].s.shape}')
+
+        
 
         if self.getValue('Calibration method') == 'SOLR':
             cal_alg = rf.UnknownThru(measured=interp_meas, ideals=self.ideals, switch_terms=interp_sw_terms, isolation=interp_iso)
@@ -150,18 +208,22 @@ class Driver(InstrumentDriver.InstrumentWorker):
         cal_alg.run()
         self.cal_alg = cal_alg
     
-    def getCorrectedNetwork(self):
-        sorted_calls = sorted(self.signal_calls.values(), reverse=True)
-        # The next line checks if only 1 parameter has been requested more than the others, it means that a new cycle has started, therefore new computations must be made
-        if sorted_calls[0] == sorted_calls[1] + 1: 
+    def getCorrectedMatrix(self):
+        # sorted_calls = sorted(self.signal_calls.values(), reverse=True)
+        # self.log(f'Signal calls:\n{self.signal_calls}')
+        # The next line checks if only 1 parameter has been requested one more time than the others, it means that a new cycle has started, therefore new computations must be made
+        if True: #sorted_calls[0] == sorted_calls[1] + 1: 
+            # self.log('New cycle of correction has started')
             # Creating the raw S matrix of the DUT
             s = np.empty((len(self.DUT_frequency), 2, 2), dtype=complex)
-            for i, j in np.indices((2,2)):
-                #s[:,i,j] = self.readValuefromOther(f'Raw S{i+1}{j+1}')['y']
-                s[:,i,j] = self.getValue(f'Raw S{i+1}{j+1}')['y']
-            RawNetwork = rf.Network(f=self.DUT_frequency, s=s)
-            self._CorrectedNetwork = self.cal_alg.apply(RawNetwork) 
-        return self._CorrectedNetwork
+            for i in [1,2]:
+                for j in [1,2]:
+                    s[:,i-1,j-1] = self.getValue(f'Raw S{i}{j}')['y'] 
+            RawMatrix = rf.Network(f=self.DUT_frequency, s=s)
+            self.log(f'{s.shape}')
+            self._CorrectedMatrix = self.cal_alg.apply_cal(RawMatrix) 
+        # If the block above is not accessed, it means that we are inside the same step, therefore the code doesn't compute a new Corrected matrix
+        return self._CorrectedMatrix
 
 if __name__ == '__main__':
     pass
