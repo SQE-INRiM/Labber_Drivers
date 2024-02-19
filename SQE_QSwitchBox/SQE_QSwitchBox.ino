@@ -45,8 +45,7 @@ QSwitch2 = QSWitch(
 );
 
 String command = ""; // Global variable to save command coming from QSwitch-Box Controller Panel, Labber or whatever
-float delay = 15; // Total delay between close and open operations. Addressed by operationTime(String a)
-
+float myDelay = 20; // Total delay between close and open operations. Addressed by commands of the form DEL <*>
 void setup(){
   Serial.begin(115200);
   Serial.setTimeout(1);
@@ -87,7 +86,10 @@ void loop() {
     else if (command == "*RST"){
       reset()
     }
-    else if (command.startswith("del"))
+    else if (command.startswith("DEL")){
+      Serial.print("Delay set to " + a.substring(3) + " ms");
+      myDelay = a.substring(3).toFloat();
+    }
     else if (command.endsWith("?")) {
       processQuery(command);
     }
@@ -99,61 +101,25 @@ void loop() {
 }
 
 void processQuery(String cmd){
-  String switchName = String(cmd[0]);
-  int idx = getIdx(RTSwitches, switchName); // Gets the position of the switch with a particular name inside the array
+  String switchName = cmd.substring(0, cmd.size()-1);
+  if (switchName == "SW1"){
+    Serial.println(EEPROM.red(QSwitch1.address));
+  }
+  else if (switchName == "SW2"){
+    Serial.println(EEPROM.red(QSwitch2.address));
+  }
+   if (switchName == "BOTH"){
+    String state1 = Serial.println(EEPROM.red(QSwitch1.address));
+    String state2 = Serial.println(EEPROM.red(QSwitch1.address));
+    if (state1 == state2){
+      Serial.println(state1)
+    }
+    else{
+      Serial.println("Error")
+    }
+    Serial.println(EEPROM.red(QSwitch1.address));
+  }
   Serial.println(EEPROM.read(RTSwitches[idx].address)); // The switch state saved in the board memory is returned of the serial channel
-}
-
-String x; // Global variable to save command coming from QSwitch-Box Controller Panel 
-float y = 15; // Total delay between close and open operations. Function operationTime(String a) will change this variable 
-void setup() {
-  // put your setup code here, to run once: 
-  // Every pin needed to use for Relays and Serial communication are here 
- Serial.begin(115200);
- Serial.setTimeout(1);
-  pinMode(2,OUTPUT);
-  pinMode(3,OUTPUT);
-  pinMode(4,OUTPUT);
-  pinMode(5,OUTPUT);
-  pinMode(6,OUTPUT);
-  pinMode(7,OUTPUT);
-  pinMode(8,OUTPUT);
-  pinMode(22,OUTPUT);
-  pinMode(24,OUTPUT);
-  pinMode(26,OUTPUT);
-  pinMode(28,OUTPUT);
-  pinMode(30,OUTPUT);
-  pinMode(32,OUTPUT);
-  pinMode(34,OUTPUT);
-  digitalWrite(2,HIGH);
-  digitalWrite(3,HIGH);
-  digitalWrite(4,HIGH);
-  digitalWrite(5,HIGH);
-  digitalWrite(6,HIGH);
-  digitalWrite(7,HIGH);
-  digitalWrite(8,HIGH);
-  digitalWrite(22,HIGH);
-  digitalWrite(24,HIGH);
-  digitalWrite(26,HIGH);
-  digitalWrite(28,HIGH);
-  digitalWrite(30,HIGH);
-  digitalWrite(32,HIGH);
-  digitalWrite(34,HIGH);
- 
-
-}
-
-void loop() { //Main loop function 
- while (!Serial.available());
- x = Serial.readString();
- String firstThree = x.substring(0,3); // Cuts the first three words of String to identify what is operation for. 
- if( firstThree == "del"){ //If first three words are "del", main function will call operationTime.
-    operationTime(x);
- }
- else{ // If the first three words coming from QSwitch-Box Controller are not "del", they are commands to activate switches. 
-  activateSwitches(x);
- }
-
 }
 
 /*
@@ -164,7 +130,8 @@ void loop() { //Main loop function
  * It will activates each relay according to the operatiın table of RF Swiches. 
  * Will send a serial signal (Serial.print"exeutedX") This signal read by the QSwitch-Box Controller panel in order to check if connection is successful and command is activated. 
  */
-void activateSwitches(String a){
+void processWrite(String cmd){
+  int current_state = EEP
   if(a== "one"){ // PIN 1 is CLOSED CIRCUIT
     Serial.print("executed1"); //If the control panel not reads that message, it will ask user to try again because there is a connection problem. It is the same for all if statements
     closeAll();

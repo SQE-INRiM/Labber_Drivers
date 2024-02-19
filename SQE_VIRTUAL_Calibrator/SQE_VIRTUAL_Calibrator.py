@@ -51,8 +51,6 @@ class Driver(InstrumentDriver.InstrumentWorker):
     def performOpen(self, options={}):
 
         self.cal_alg = None
-        #self.signal_calls = {'S11': 0, 'S12': 0, 'S21': 0, 'S22': 0} # keeps trace of the times a corrected trace has been requested, so that the corrected matrix is gneerated just once per step
-        self.already_opened = {'S11': False, 'S12': False, 'S21': False, 'S22': False}
         self.getMeasured()
         self.getIdeals()
         self.getOptionals()
@@ -131,7 +129,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
         """Perform the Get Value instrument operation"""
         
         # If the requested quantitity is a Corrected S-parameter and the virtual driver has been already started
-        if quant.name.startswith('Corrected') and self.already_opened[quant.name[-3:]]:
+        if quant.name.startswith('Corrected'): # and self.already_opened[quant.name[-3:]]:
             # if self.isFinalCall(options):
             #     self.log('is final call')
             if self.cal_alg is None:
@@ -148,11 +146,6 @@ class Driver(InstrumentDriver.InstrumentWorker):
             CorrectedTrace = CorrectedMatrix.s[:, x-1, y-1]
             value = quant.getTraceDict(CorrectedTrace, x=self.DUT_frequency)
             self.log(f'Correction of S{x}{y} was successful')
-        # else, if Labber is starting the driver, therefore no raw traces have been provided to the calibrator
-        elif quant.name.startswith('Corrected') and not self.already_opened[quant.name[-3:]]:
-            # just return the quantity value
-            self.already_opened[quant.name[-3:]] = True
-            value = quant.getValue()
         else:
             value = quant.getValue()
         return value
@@ -163,7 +156,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
         Retrieves the frequency range of the particular measurement.
         '''
         #DUT_Dict = self.readValuefromOther('Raw S11')
-        DUT_Dict = DUT_Dict = self.getValue(quant_name)
+        DUT_Dict = self.getValue(quant_name)
         if DUT_Dict is None:
             raise ValueError('No Trace received')
         freqStart = tryAttrs(DUT_Dict, 'x0', 't0')
@@ -197,7 +190,6 @@ class Driver(InstrumentDriver.InstrumentWorker):
             meas.interpolate_self(self.DUT_frequency)
         self.log(f'{interp_meas[0].s.shape}')
 
-        
 
         if self.getValue('Calibration method') == 'SOLR':
             cal_alg = rf.UnknownThru(measured=interp_meas, ideals=self.ideals, switch_terms=interp_sw_terms, isolation=interp_iso)
@@ -209,19 +201,14 @@ class Driver(InstrumentDriver.InstrumentWorker):
         self.cal_alg = cal_alg
     
     def getCorrectedMatrix(self):
-        # sorted_calls = sorted(self.signal_calls.values(), reverse=True)
-        # self.log(f'Signal calls:\n{self.signal_calls}')
-        # The next line checks if only 1 parameter has been requested one more time than the others, it means that a new cycle has started, therefore new computations must be made
-        if True: #sorted_calls[0] == sorted_calls[1] + 1: 
-            # self.log('New cycle of correction has started')
-            # Creating the raw S matrix of the DUT
-            s = np.empty((len(self.DUT_frequency), 2, 2), dtype=complex)
-            for i in [1,2]:
-                for j in [1,2]:
-                    s[:,i-1,j-1] = self.getValue(f'Raw S{i}{j}')['y'] 
-            RawMatrix = rf.Network(f=self.DUT_frequency, s=s)
-            self.log(f'{s.shape}')
-            self._CorrectedMatrix = self.cal_alg.apply_cal(RawMatrix) 
+        # Creating the raw S matrix of the DUT
+        s = np.empty((len(self.DUT_frequency), 2, 2), dtype=complex)
+        for i in [1,2]:
+            for j in [1,2]:
+                s[:,i-1,j-1] = self.getValue(f'Raw S{i}{j}')['y'] 
+        RawMatrix = rf.Network(f=self.DUT_frequency, s=s)
+        self.log(f'{s.shape}')
+        self._CorrectedMatrix = self.cal_alg.apply_cal(RawMatrix) 
         # If the block above is not accessed, it means that we are inside the same step, therefore the code doesn't compute a new Corrected matrix
         return self._CorrectedMatrix
 

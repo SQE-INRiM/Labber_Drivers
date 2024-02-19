@@ -83,6 +83,7 @@ class Driver(VISA_Driver):
             y = int(quant.name[-1]) # 2
             self.RTSwitchBox.write(f"{self.sw2} {x}") # 'B 1'
             self.RTSwitchBox.write(f"{self.sw1} {y}") # 'A 2'
+            time.sleep(0.3)
 
             # At this point, the VNA reads S21
             self.sendValueToOther('S21 - Enabled', False)
