@@ -15,41 +15,54 @@ class QSwitch {
   public:
     int pins_open[6]; // Array whose (i-1)-th entry is the pin that opens the i-th switch path
     int pins_closed[6]; // Array whose (i-1)-th entry is the pin that closes the i-th switch path
+    int open_relay_state[6]; // Array whose (i-1)-th entry is the final state of the pulse to send to the right pin to open the the i-th switch path
+    int closed_relay_state[6]; // Array whose (i-1)-th entry is the final state of the pulse to send to the right pin to close the the i-th switch path
     int address; // Address of the byte in the board internal memory where the switch state is stored
-    RTSwitch(){ // Default constructor
+    
+    QSwitch(){ // Default constructor
       pins_open = [0,0,0,0,0,0];
       pins_closed = [0,0,0,0,0,0];
+      open_relay_state = [HIGH, HIGH, HIGH, HIGH, HIGH, HIGH];
+      closed_relay_state = [HIGH, HIGH, HIGH, HIGH, HIGH, HIGH];
       address = 0; 
     }
-    RTSwitch(String _name, int _pins_open[6], int _pins_closed[6], int _address) { // Constructor
+
+    QSwitch(String _name, int _pins_open[6], int _pins_closed[6], int _open_relay_state[6], int _closed_relay_state[6], int _address) { // Constructor
       pins_open = _pins_open;
       pins_closed = _pins_closed;
+      open_relay_state = _open_relay_state;
+      closed_relay_state = _closed_relay_state; 
       address = _address;
     }
 };
 
 // Command sintax:
-// [Switch]::[status]
-// [Switch]: Port1, Port2, BOTH
-// [status]: 
+// [Switch]<*>
+// [Switch]: SW1, SW2, BOTH
+// <*>: " 1", " 2", " 3", " 4", " 5", " 6", "?"
 
 QSwitch1 = QSWitch(
   [2, 3, 4, 5, 6, 7], 
-  [3, 4, 5, 6, 7, 8], 
+  [3, 4, 5, 6, 7, 8],
+  [HIGH, HIGH, HIGH, HIGH, HIGH, HIGH],
+  [HIGH, HIGH, HIGH, HIGH, LOW, HIGH], 
   0,
 );
 QSwitch2 = QSWitch(
   [24, 26, 28, 30, 32, 34], 
-  [22, 24, 26, 28, 30, 32], 
+  [22, 24, 26, 28, 30, 32],
+  [HIGH, HIGH, HIGH, HIGH, HIGH, LOW],
+  [HIGH, LOW, HIGH, HIGH, LOW, HIGH], 
   1,
 );
 
 String command = ""; // Global variable to save command coming from QSwitch-Box Controller Panel, Labber or whatever
-float delay = 15; // Total delay between close and open operations. Addressed by operationTime(String a)
+float myDelay = 20; // Total delay between close and open operations. Addressed by commands of the form DEL <*>
 
 void setup(){
   Serial.begin(115200);
   Serial.setTimeout(1);
+
   for (int i = 0; i < 6; i++) {
     pinMode(QSwitch1.pins_open[i],OUTPUT);
     pinMode(QSwitch1.pins_closed[i],OUTPUT);
@@ -75,7 +88,7 @@ void loop() {
   command += receivedChar;
   // If the last received character is a newline ("\n"), process the command
   if (receivedChar == '\n') {
-    / Remove any excess spaces
+    // Remove any excess spaces
     command.trim();
     // Process the command
     if (command=="*IDN?"){
@@ -85,11 +98,16 @@ void loop() {
       Serial.flush();
     }
     else if (command == "*RST"){
-      reset()
+      EEPROM.write(QSwitch1.address, 0);
+      EEPROM.write(QSwitch2.address, 0);
+      reset();
     }
-    else if (command.startswith("del"))
+    else if (command.startswith("DEL")){
+      Serial.print("Delay set to " + a.substring(3) + " ms");
+      myDelay = a.substring(3).toFloat();
+    }
     else if (command.endsWith("?")) {
-      processQuery(command);
+      String output = processQuery(command);
     }
     else {
       processWrite(command);
@@ -98,281 +116,82 @@ void loop() {
   }
 }
 
-void processQuery(String cmd){
-  String switchName = String(cmd[0]);
-  int idx = getIdx(RTSwitches, switchName); // Gets the position of the switch with a particular name inside the array
-  Serial.println(EEPROM.read(RTSwitches[idx].address)); // The switch state saved in the board memory is returned of the serial channel
+void closeAll(){ 
+  for (int i = 0; i < 6; i++) {
+    digitalWrite(QSwitch1.pins_open[i],HIGH);
+    digitalWrite(QSwitch1.pins_closed[i],HIGH);
+    digitalWrite(QSwitch2.pins_open[i],HIGH);
+    digitalWrite(QSwitch2.pins_closed[i],HIGH);
+  }
+  delay(20);
 }
 
-String x; // Global variable to save command coming from QSwitch-Box Controller Panel 
-float y = 15; // Total delay between close and open operations. Function operationTime(String a) will change this variable 
-void setup() {
-  // put your setup code here, to run once: 
-  // Every pin needed to use for Relays and Serial communication are here 
- Serial.begin(115200);
- Serial.setTimeout(1);
-  pinMode(2,OUTPUT);
-  pinMode(3,OUTPUT);
-  pinMode(4,OUTPUT);
-  pinMode(5,OUTPUT);
-  pinMode(6,OUTPUT);
-  pinMode(7,OUTPUT);
-  pinMode(8,OUTPUT);
-  pinMode(22,OUTPUT);
-  pinMode(24,OUTPUT);
-  pinMode(26,OUTPUT);
-  pinMode(28,OUTPUT);
-  pinMode(30,OUTPUT);
-  pinMode(32,OUTPUT);
-  pinMode(34,OUTPUT);
-  digitalWrite(2,HIGH);
-  digitalWrite(3,HIGH);
-  digitalWrite(4,HIGH);
-  digitalWrite(5,HIGH);
-  digitalWrite(6,HIGH);
-  digitalWrite(7,HIGH);
-  digitalWrite(8,HIGH);
-  digitalWrite(22,HIGH);
-  digitalWrite(24,HIGH);
-  digitalWrite(26,HIGH);
-  digitalWrite(28,HIGH);
-  digitalWrite(30,HIGH);
-  digitalWrite(32,HIGH);
-  digitalWrite(34,HIGH);
- 
-
-}
-
-void loop() { //Main loop function 
- while (!Serial.available());
- x = Serial.readString();
- String firstThree = x.substring(0,3); // Cuts the first three words of String to identify what is operation for. 
- if( firstThree == "del"){ //If first three words are "del", main function will call operationTime.
-    operationTime(x);
- }
- else{ // If the first three words coming from QSwitch-Box Controller are not "del", they are commands to activate switches. 
-  activateSwitches(x);
- }
-
-}
-
-/*
- * Function Name: activateSwitches
- * Function Type: Void
- * Inputs: String a - It is the main command read by Serail Connection coming from QSwitch-Box Controller 
- * Function Description: The input string will compared with if-else statements to find which operation will applied to relay board. 
- * It will activates each relay according to the operatiın table of RF Swiches. 
- * Will send a serial signal (Serial.print"exeutedX") This signal read by the QSwitch-Box Controller panel in order to check if connection is successful and command is activated. 
- */
-void activateSwitches(String a){
-  if(a== "one"){ // PIN 1 is CLOSED CIRCUIT
-    Serial.print("executed1"); //If the control panel not reads that message, it will ask user to try again because there is a connection problem. It is the same for all if statements
-    closeAll();
-    digitalWrite(2,LOW);
-    digitalWrite(24,LOW);
-    delay(y);
-    digitalWrite(2,HIGH);
-    digitalWrite(24,HIGH);
-    closeAll();  
-  }else if(a== "two"){ //PIN 1 is OPEN CIRCUIT
-    Serial.print("executed2");
-    closeAll();
-    digitalWrite(3,LOW);
-    digitalWrite(22,LOW);
-    delay(y);
-    digitalWrite(3,HIGH);
-    digitalWrite(22,HIGH);
-    closeAll();  
-  }else if(a=="three"){ //PIN 2 is CLOSED CIRCUIT
-    Serial.print("executed3");
-    closeAll();
-    digitalWrite(3,LOW);
-    digitalWrite(26,LOW);
-    delay(y);
-    digitalWrite(3,HIGH);
-    digitalWrite(26,LOW);
-    closeAll();
-  }else if(a=="four"){ //PIN 2 is OPEN CIRCUIT
-    Serial.print("executed4");
-    closeAll();
-    digitalWrite(4,LOW);
-    digitalWrite(24,LOW);  
-    delay(y);
-    digitalWrite(4,HIGH);
-    digitalWrite(24,HIGH);
-    closeAll();
-  }else if(a=="five"){ //PIN 3 is CLOSED CIRCUIT
-    Serial.print("executed5");
-    closeAll();
-    digitalWrite(4,LOW);
-    digitalWrite(28,LOW);
-    delay(y);
-    digitalWrite(4,HIGH);
-    digitalWrite(28,HIGH);
-    closeAll();
-  }else if(a=="six"){ //PIN 3 is OPEN CIRCUIT
-    Serial.print("executed6");
-    closeAll();
-    digitalWrite(5,LOW);
-    digitalWrite(26,LOW);
-    delay(y);
-    digitalWrite(5,HIGH);
-    digitalWrite(26,HIGH);
-    closeAll();
-  }else if(a=="seven"){ //PIN 4 is CLOSED CIRCUIT
-    Serial.print("executed7");
-    closeAll();
-    digitalWrite(5,LOW); 
-    digitalWrite(30,LOW);
-    delay(y);
-    digitalWrite(5,HIGH);
-    digitalWrite(30,HIGH);
-    closeAll();
-  }else if(a=="eight"){ //PIN 4 is OPEN CIRCUIT
-    Serial.print("executed8");
-    closeAll();
-    digitalWrite(6,LOW); 
-    digitalWrite(28,LOW);
-    delay(y);
-    digitalWrite(6,HIGH);
-    digitalWrite(28,HIGH);
-    closeAll();
-    
-    }else if(a=="nine"){ //PIN 5 is CLOSED CIRCUIT
-    Serial.print("executed9");
-    closeAll();
-    digitalWrite(6,LOW); 
-    digitalWrite(32,LOW);
-    delay(y);
-    digitalWrite(6,LOW);
-    digitalWrite(32,LOW);
-    closeAll();
-    
-    }else if(a=="ten"){ //PIN 5 is OPEN CIRCUIT
-    Serial.print("executed10");
-    closeAll();
-    digitalWrite(7,LOW); 
-    digitalWrite(30,LOW);
-    delay(y);
-    digitalWrite(7,HIGH);
-    digitalWrite(30,HIGH);
-    closeAll();
-        
-    }else if(a=="eleven"){ //PIN 6 is CLOSED CIRCUIT
-    Serial.print("executed11");
-    closeAll();  
-    digitalWrite(7,LOW); 
-    digitalWrite(34,LOW);
-    delay(y);
-    digitalWrite(7,HIGH);
-    digitalWrite(34,HIGH);
-    closeAll();
-    
-    }else if(a=="twelve"){ //PIN 6 is OPEN CIRCUIT
-    Serial.print("executed12");
-    closeAll();
-    digitalWrite(8,LOW); 
-    digitalWrite(32,LOW);
-    delay(y);
-    digitalWrite(8,HIGH);
-    digitalWrite(32,LOW);
-    closeAll();
-
-    }
-    else if (a=="reset"){ // 
-      Serial.print("resetNow");
-      closeAll();
-      digitalWrite(3,LOW);
-      digitalWrite(22,LOW);
-      delay(y);
-      digitalWrite(3,HIGH);
-      digitalWrite(22,HIGH);
-      closeAll();  
-      delay(200);
-      digitalWrite(4,LOW);
-      digitalWrite(24,LOW);  
-      delay(y);
-      digitalWrite(4,HIGH);
-      digitalWrite(24,HIGH);
-      closeAll();
-      delay(200);
-      digitalWrite(5,LOW);
-      digitalWrite(26,LOW);
-      delay(y);
-      digitalWrite(5,HIGH);
-      digitalWrite(26,HIGH);
-      closeAll();
-      delay(200);
-      digitalWrite(6,LOW); 
-      digitalWrite(28,LOW);
-      delay(y);
-      digitalWrite(6,HIGH);
-      digitalWrite(28,HIGH);
-      closeAll();
-      delay(200);
-      digitalWrite(7,LOW); 
-      digitalWrite(30,LOW);
-      delay(y);
-      digitalWrite(7,HIGH);
-      digitalWrite(30,HIGH);
-      closeAll();
-      delay(200);
-      digitalWrite(8,LOW); 
-      digitalWrite(32,LOW);
-      delay(y);
-      digitalWrite(8,HIGH);
-      digitalWrite(32,LOW);
-      closeAll();
-      
-    }else{ //If command is not identified, it will close all the relays. 
-     digitalWrite(2,HIGH);
-     digitalWrite(3,HIGH);
-     digitalWrite(4,HIGH);
-     digitalWrite(5,HIGH);
-     digitalWrite(6,HIGH);
-     digitalWrite(7,HIGH);
-     digitalWrite(8,HIGH);
-     digitalWrite(22,HIGH);
-     digitalWrite(24,HIGH);
-     digitalWrite(26,HIGH);
-     digitalWrite(28,HIGH);
-     digitalWrite(30,HIGH);
-     digitalWrite(32,HIGH);
-     digitalWrite(34,HIGH);
+String processQuery(String cmd){
+  String switchName = cmd.substring(0, cmd.size()-1);
+  String msg;
+  if (switchName == "SW1"){
+    msg = EEPROM.read(QSwitch1.address)
+    Serial.println();
+  }
+  else if (switchName == "SW2"){
+    msg = EEPROM.read(QSwitch2.address);
+  }
+  else if (switchName == "BOTH"){
+    String state1 = EEPROM.read(QSwitch1.address);
+    String state2 = EEPROM.read(QSwitch1.address);
+    if (state1 == state2){ msg = state1; }
+    else{ msg = "Error"; }
+    Serial.prinln(msg);
+    return msg;
   }
 }
-/* Function name: closeAll()
- * Function type: Void
- * Function description: It will be called by activateSwitches in order to prevent any short circuit. 
- * 
- */
- void closeAll(){ 
-     digitalWrite(2,HIGH);
-     digitalWrite(3,HIGH);
-     digitalWrite(4,HIGH);
-     digitalWrite(5,HIGH);
-     digitalWrite(6,HIGH);
-     digitalWrite(7,HIGH);
-     digitalWrite(8,HIGH);
-     digitalWrite(22,HIGH);
-     digitalWrite(24,HIGH);
-     digitalWrite(26,HIGH);
-     digitalWrite(28,HIGH);
-     digitalWrite(30,HIGH);
-     digitalWrite(32,HIGH);
-     digitalWrite(34,HIGH);
-     delay(20);
- }
- 
- /*
-  * Function Name: operationTime
-  * Function Type: Void
-  * Input: String a - The command coming from QSwitch-Box controller panel. Function will cut the first three words. Remaining is the time we want for total operation. 
-  * Function Description: It will change the user input string to a float value and decleares to the global variable y. 
-  */
- void operationTime(String a){
-   Serial.print("dataTime"); //Prints dataTime to have a mutual communication between the control panel and Arduino. It will read it and gives a confirmation to user. 
-   String myVal = a.substring(3); 
-   float delayTime = myVal.toFloat();
-   y = delayTime;
- }
+
+void sendPulse(int pin, int state1, int state2){
+  digitalWrite(pin, state1);
+  delay(myDelay);
+  digitalWrite(pin, state2);
+  return;
+}
+
+void processWrite(String cmd){
+  String switchName = cmd.substring(0, cmd.size()-1);
+  int old_state = processQuery(switchName + "?");
+  int target_state = atoi(cmd.substring(cmd.size-1));
+  if (switchName == "SW1"){
+    closeAll();
+    sendPulse(QSwitch1.pin_closed[old_state-1], LOW, QSwitch1.closed_relay_state[old_state-1]); // closing old path
+    delay(myDelay);
+    sendPulse(QSwitch1.pin_open[target_state-1], LOW, QSwitch1.open_relay_state[target_state-1]); // opening new path
+    EEPROM.write(QSwitch1.address, target_state);
+  }
+  else if (switchName == "SW2"){
+    closeAll();
+    sendPulse(QSwitch2.pin_closed[old_state-1], LOW, QSwitch2.closed_relay_state[old_state-1]); // closing old path
+    delay(myDelay);
+    sendPulse(QSwitch2.pin_open[target_state-1], LOW, QSwitch2.open_relay_state[target_state-1]); // opening new path
+    EEPROM.write(QSwitch1.address, target_state);
+  }
+  else if (switchName == "BOTH"){
+    closeAll();
+    sendPulse(QSwitch1.pin_closed[old_state-1], LOW, QSwitch1.closed_relay_state[old_state-1]); // closing old path
+    sendPulse(QSwitch2.pin_closed[old_state-1], LOW, QSwitch2.closed_relay_state[old_state-1]); // closing old path
+    delay(myDelay);
+    sendPulse(QSwitch1.pin_open[target_state-1], LOW, QSwitch1.open_relay_state[target_state-1]); // opening new path
+    sendPulse(QSwitch2.pin_open[target_state-1], LOW, QSwitch2.open_relay_state[target_state-1]); // opening new path
+    closeAll();
+    EEPROM.write(QSwitch1.address, target_state);
+    EEPROM.write(QSwitch2.address, target_state);
+  }
+
+void reset(){
+  for (int i = 0; i < 6; i++) {
+    closeAll();
+    sendPulse(QSwitch1.pin_closed[old_state-1], LOW, QSwitch1.closed_relay_state[old_state-1]); // closing old path
+    sendPulse(QSwitch2.pin_closed[old_state-1], LOW, QSwitch2.closed_relay_state[old_state-1]); // closing old path
+    delay(myDelay);
+    sendPulse(QSwitch1.pin_open[target_state-1], LOW, QSwitch1.open_relay_state[target_state-1]); // opening new path
+    sendPulse(QSwitch2.pin_open[target_state-1], LOW, QSwitch2.open_relay_state[target_state-1]); // opening new path
+    closeAll();
+    delay(200);
+  }
+}
