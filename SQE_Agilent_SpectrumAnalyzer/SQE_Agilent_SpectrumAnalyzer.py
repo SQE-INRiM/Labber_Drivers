@@ -90,7 +90,7 @@ class Driver(VISA_Driver):
             # get start/stop frequencies
             startFreq = self.readValueFromOther('Start frequency')
             stopFreq = self.readValueFromOther('Stop frequency')
-            if self.getModel() in ('E44xx'):
+            if self.getModel() in ('N90xx', 'Agilent E44xx'):
                 sweepType = 'Lin'
             else:
                 sweepType = self.readValueFromOther('Sweep type')
@@ -106,55 +106,6 @@ class Driver(VISA_Driver):
                 # create a trace dict
                 value = InstrumentQuantity.getTraceDict(vData, t0=startFreq,
                                                dt=(stopFreq-startFreq)/(nPts-1))
-        elif quant.name in ('Average - Value'):
-            # if not in continous mode, trig from computer
-            bWaitTrace = self.getValue('Wait for new trace')
-            bAverage = self.getValue('Average')
-            # wait for trace, either in averaging or normal mode
-            if bWaitTrace:
-                if bAverage:
-                    # clear averages
-                    self.writeAndLog(':SENS:AVER:CLE;')
-                self.writeAndLog(':ABOR;:INIT:CONT OFF;:INIT:IMM;*OPC')
-                # wait some time before first check
-                self.wait(0.03)
-                bDone = False
-                while (not bDone) and (not self.isStopped()):
-                    # check if done
-                    stb = int(self.askAndLog('*ESR?'))
-                    bDone = (stb & 1) > 0
-                    if not bDone:
-                        self.wait(0.05)
-                # if stopped, don't get data
-                if self.isStopped():
-                    self.writeAndLog('*CLS;:INIT:CONT ON;')
-                    return []
-            # get data as float32, convert to numpy array
-            self.write(':FORM REAL,32;TRAC:DATA? TRACE1', bCheckError=False)
-            sData = self.read(ignore_termination=True)
-            if bWaitTrace and not bAverage:
-                self.writeAndLog(':INIT:CONT ON;')
-            # strip header to find # of points
-            i0 = sData.find(b'#')
-            nDig = int(sData[i0+1:i0+2])
-            nByte = int(sData[i0+2:i0+2+nDig])
-            nPts = int(nByte/4)
-            # get data to numpy array
-            vData = np.frombuffer(sData[(i0+2+nDig):(i0+2+nDig+nByte)], 
-                                  dtype='>f', count=nPts)
-            # get start/stop frequencies
-            startFreq = self.readValueFromOther('Start frequency')
-            stopFreq = self.readValueFromOther('Stop frequency')
-            if self.getModel() in ('E44xx'):
-                sweepType = 'Lin'
-            else:
-                sweepType = self.readValueFromOther('Sweep type')
-            # if log scale, take log of start/stop frequencies
-            if sweepType == 'Log':
-                startFreq = np.log10(startFreq)
-                stopFreq = np.log10(stopFreq)
-            # check if return trace or trace average
-            value = np.average(vData)               
         elif quant.name in ('Wait for new trace',):
             # do nothing, return local value
             value = quant.getValue()

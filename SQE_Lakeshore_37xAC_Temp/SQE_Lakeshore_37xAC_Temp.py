@@ -15,12 +15,6 @@ class Driver(VISA_Driver):
         
     def performOpen(self, options={}):
         """Perform the operation of opening the instrument connection"""
-        # starting_trigger_quant_values = {'1': np.nan, '2': np.nan, '3': np.nan, '4': np.nan}
-        # self.memory = {}
-        # for channel in ('1', '2', '3', '4', '5', '6', '7', '8'):
-        #     for quant in ('Temperature ', 'Resistance ', 'Excitation Power ' ):
-        #         self.memory[quant+channel] = starting_trigger_quant_values
-
         try:
            # start by calling the generic VISA open to make sure we have a connection
            VISA_Driver.performOpen(self, options=options)
@@ -195,122 +189,71 @@ class Driver(VISA_Driver):
                     return value
 
                 elif name in ('Temperature', 'Resistance', 'Excitation Power'):
-                    new_acquisition = True # by default, a new acquisition is to be done
-                    # active_triggers = {n: self.getValue(f'Enable trigger {n}') for n in ('1', '2', '3', '4')}
-                    # if any(active_triggers.values()): # If any trigger is enabled, checks are performed
-                    #     new_acquisition = False
-                    #     self.log(f'Checking the triggers to see if {quant.name} should be measured from the instrument')
-                    #     for n in active_triggers.keys():
-                    #         if active_triggers[n]:
-                    #             self.log(f'New value of trigger quantity {n} = ' + str(self.getValue(f'Trigger quantity {n}')))
-                    #             self.log(f'Old value of trigger quantity {n} = ' + str(self.memory[quant.name][n]))
-                    #             if self.getValue(f'Trigger quantity {n}') != self.memory[quant.name][n]:
-                    #                 new_acquisition = True
-                    #                 self.memory[quant.name][n] = self.getValue(f'Trigger quantity {n}')
-                    #                 self.log(f'Thery are different: {quant.name} acquisition triggered!')                                
-                    #             else:
-                    #                 self.memory[quant.name][n] = self.getValue(f'Trigger quantity {n}')
-                    #                 self.log(f'Thery are equal: {quant.name} acquisition *NOT* triggered by quantity {n}')
-                    if new_acquisition:
-                        self.log(f'Measuring {quant.name} with the instrument')
-                        # Send command to switch to channel
-                        sCmd1 = 'SCAN %s,0' %(str(channel))
-                        self.writeAndLog(sCmd1)
-                        # Send command to wait until settling of channel - for Model 370, this requires a workaorund
-                        model = self.getModel()
-                        if model == 'Lakeshore 370AC':
-                            dAutorange = self.getValueIndex('Autorange %s' %(str(channel)))
-                            filterBool = int(self.getCmdStringFromValue('Filter %s' %(str(channel))))
-                            timeFilter = int(self.getValue('Filter Settle Time %s' %(str(channel))))
-                            timeout = 50 # in seconds
-                            waitLoop = 0.05 # in seconds
-                            waitEnd = 4 # in seconds to wait for readout to settle
-                            n = 0 # timer
-                            while not self.isStopped():
-                                status = self.askAndLog('RDGST? %s' %(str(channel)))
-                                # The instrument is likely settled when there is no error in status query bits 2,3,4,6,7
-                                if (int(status) & 220) == 0: # 220 = 2^2 + 2^3 + 2^4 + 2^6 + 2^7
-                                    if filterBool == 1:
-                                        self.wait(timeFilter + waitEnd)
-                                        self.log('Wait for %s s (includes filter settle time)' %(str(timeFilter + waitEnd)))
-                                    else:
-                                        self.wait(waitEnd)
-                                        self.log('Wait for %s s' %(str(waitEnd)))
-                                    break
-                                # Timeout
-                                elif n > int(timeout/waitLoop):
-                                    break
-                                n += 1
-                        elif model == 'Lakeshore 372AC':
-
-                            ## ORIGINAL CODE FROM KEYSIGHT
-                            #settledMeasure0 = 2
-                            #while not self.isStopped():
-                            #    settled = self.askAndLog('RDGSTL?')
-                            #    settledMeasure1 = int(settled.split(',')[1].strip())
-                            #    if settledMeasure0 == 0 and settledMeasure1 == 0:
-                            #        break
-                            #    settledMeasure0 = settledMeasure1
-                            #    self.wait(0.05)
-
-
-
-
-                            ##USING THE SAME WORKAROUND OF THE 370AC Model - Lele/Luca 11-04-2024
-                            dAutorange = self.getValueIndex('Autorange %s' %(str(channel)))
-                            filterBool = int(self.getCmdStringFromValue('Filter %s' %(str(channel))))
-                            timeFilter = int(self.getValue('Filter Settle Time %s' %(str(channel))))
-                            timeout = 50 # in seconds
-                            waitLoop = 0.05 # in seconds
-                            waitEnd = 4 # in seconds to wait for readout to settle
-                            n = 0 # timer
-                            while not self.isStopped():
-                                status = self.askAndLog('RDGST? %s' %(str(channel)))
-                                # The instrument is likely settled when there is no error in status query bits 2,3,4,6,7
-                                if (int(status) & 220) == 0: # 220 = 2^2 + 2^3 + 2^4 + 2^6 + 2^7
-                                    if filterBool == 1:
-                                        self.wait(timeFilter + waitEnd)
-                                        self.log('Wait for %s s (includes filter settle time)' %(str(timeFilter + waitEnd)))
-                                    else:
-                                        self.wait(waitEnd)
-                                        self.log('Wait for %s s' %(str(waitEnd)))
-                                    break
-                                # Timeout
-                                elif n > int(timeout/waitLoop):
-                                    break
-                                n += 1
-
-
-                            # Send command to request measurement result
-                        value = 0.
-                        m = 0 # timeout timer
-                        while value == 0 and m < 20:
-                            if name == 'Temperature':
-                                sCmd3 = 'RDGK? %s' %(int(channel))
-                                sTempStatus = self.askAndLog(sCmd3)
-                                self.log('Command sent: ' + sCmd3)
-                                value = float(sTempStatus)
-                            elif name == 'Resistance':
-                                sCmd3 = 'RDGR? %s' %(int(channel))
-                                sTempStatus = self.askAndLog(sCmd3)
-                                self.log('Command sent: ' + sCmd3)
-                                value = float(sTempStatus)
-                            elif name == 'Excitation Power':
-                                sCmd3 = 'RDGPWR? %s' %(int(channel))
-                                sTempStatus = self.askAndLog(sCmd3)
-                                self.log('Command sent: ' + sCmd3)
-                                value = float(sTempStatus)
-                            if value == 0:
-                                # If the value has 'settled' to an error, include an additional wait 
-                                self.wait(0.5)
-                                self.log('Instrument not settled - wait for 0.5s')
-                            m += 1
-                        # get resistance range from hardware
-                        self.readValueFromOther('Resistance Range %s' %(str(channel)))
-                        return value
-                    else:
-                        self.log(f'Returning the driver-stored value of {quant.name}')
-                        return self.getValue(quant.name)
+                    # Send command to switch to channel
+                    sCmd1 = 'SCAN %s,0' %(str(channel))
+                    self.writeAndLog(sCmd1)
+                    # Send command to wait until settling of channel - for Model 370, this requires a workaorund
+                    model = self.getModel()
+                    if model == 'Lakeshore 372AC':
+                        dAutorange = self.getValueIndex('Autorange %s' %(str(channel)))
+                        filterBool = int(self.getCmdStringFromValue('Filter %s' %(str(channel))))
+                        timeFilter = int(self.getValue('Filter Settle Time %s' %(str(channel))))
+                        timeout = 50 # in seconds
+                        waitLoop = 0.05 # in seconds
+                        waitEnd = 4 # in seconds to wait for readout to settle - SI AGGIUNGE AL TEMPO DI INTEGRAZIONE!
+                        n = 0 # timer
+                        while not self.isStopped():
+                            status = self.askAndLog('RDGST? %s' %(str(channel)))
+                            # The instrument is likely settled when there is no error in status query bits 2,3,4,6,7
+                            if (int(status) & 220) == 0: # 220 = 2^2 + 2^3 + 2^4 + 2^6 + 2^7
+                                if filterBool == 1:
+                                    self.wait(timeFilter + waitEnd)
+                                    self.log('Wait for %s s (includes filter settle time)' %(str(timeFilter + waitEnd)))
+                                else:
+                                    self.wait(waitEnd)
+                                    self.log('Wait for %s s' %(str(waitEnd)))
+                                break
+                            # Timeout
+                            elif n > int(timeout/waitLoop):
+                                break
+                            n += 1
+                    elif model == 'Lakeshore 370AC':
+                        self.log('model == Lakeshore 372AC')
+                        settledMeasure0 = 2
+                        while not self.isStopped():
+                            settled = self.askAndLog('RDGSTL?')
+                            settledMeasure1 = int(settled.split(',')[1].strip())
+                            if settledMeasure0 == 0 and settledMeasure1 == 0:
+                                break
+                            settledMeasure0 = settledMeasure1
+                            self.wait(0.05)
+                        # Send command to request measurement result
+                    value = 0.
+                    m = 0 # timeout timer
+                    while value == 0 and m < 20:
+                        if name == 'Temperature':
+                            sCmd3 = 'RDGK? %s' %(int(channel))
+                            sTempStatus = self.askAndLog(sCmd3)
+                            self.log('Command sent: ' + sCmd3)
+                            value = float(sTempStatus)
+                        elif name == 'Resistance':
+                            sCmd3 = 'RDGR? %s' %(int(channel))
+                            sTempStatus = self.askAndLog(sCmd3)
+                            self.log('Command sent: ' + sCmd3)
+                            value = float(sTempStatus)
+                        elif name == 'Excitation Power':
+                            sCmd3 = 'RDGPWR? %s' %(int(channel))
+                            sTempStatus = self.askAndLog(sCmd3)
+                            self.log('Command sent: ' + sCmd3)
+                            value = float(sTempStatus)
+                        if value == 0:
+                            # If the value has 'settled' to an error, include an additional wait 
+                            self.wait(0.5)
+                            self.log('Instrument not settled - wait for 0.5s')
+                        m += 1
+                    # get resistance range from hardware
+                    self.readValueFromOther('Resistance Range %s' %(str(channel)))
+                    return value
 
                 elif name in ('Filter', 'Filter Settle Time', 'Filter Window'):
                     cmd = 'FILTER? %s' % str(channel)

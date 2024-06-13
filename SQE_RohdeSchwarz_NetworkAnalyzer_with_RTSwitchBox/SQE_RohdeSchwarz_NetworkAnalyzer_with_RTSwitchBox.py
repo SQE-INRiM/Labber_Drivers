@@ -43,28 +43,19 @@ class Driver(VISA_Driver):
     def performSetValue(self, quant, value, sweepRate=0.0, options={}):
         """Perform the Set Value instrument operation. This function should
         return the actual value set by the instrument"""
-        if quant.name in ['RTSwitchBox address', 'Switch on VNA port 1', 'Switch on VNA port 2']: 
+        if quant.name in ('RTSwitchBox address', 'Switch on VNA port 1', 'Switch on VNA port 2'): 
             value = self.setValue(quant.name, value)
-        
-        # create new channels if needed
-        elif quant.name in ('S11 - Enabled', 'S21 - Enabled', 'S12 - Enabled',
-                          'S22 - Enabled'):
-            # get updated list of measurements in use
-            param = quant.name[:3]
-            self.getActiveMeasurements()
-            # clear old measurements for this parameter
-            if param in self.dMeasParam:
-                for name in self.dMeasParam[param]:
-                    self.writeAndLog("CALC:PAR:DEL '%s'" % name)
-            # create new measurement, if enabled is true
-            if value:
-                newName = 'LabC_%s' % param
-                self.writeAndLog("CALC:PAR:SDEF '%s','%s'" % (newName, param))
-                # show on PNA screen
-                iTrace = 1 + ['S11', 'S21', 'S12', 'S22'].index(param)
-                self.writeAndLog("DISP:WIND:TRAC%d:FEED '%s'" % (iTrace, newName))
-                # add to dict with list of measurements
-                self.dMeasParam[param] = [newName]
+
+        elif quant.name == 'Current S-parameter':
+            x = str(value)[-2] # 1
+            y = str(value)[-1] # 2
+            self.RTSwitchBox.write(f"{self.sw2} {x}") # 'B 1'
+            self.RTSwitchBox.write(f"{self.sw1} {y}") # 'A 2'
+            time.sleep(0.3)
+            # S21 is refreshed
+            self.disableVNAtrace('S21')
+            self.enableVNAtrace('S21')
+    
         elif quant.name in ('Wait for new trace',):
             # do nothing
             pass
@@ -78,24 +69,11 @@ class Driver(VISA_Driver):
         """Perform the Get Value instrument operation"""
         # check type of quantity
         if quant.name.startswith('Network'): # e.g. 'Network S12'
-
-            x = int(quant.name[-2]) # 1
-            y = int(quant.name[-1]) # 2
-            self.RTSwitchBox.write(f"{self.sw2} {x}") # 'B 1'
-            self.RTSwitchBox.write(f"{self.sw1} {y}") # 'A 2'
-
-            # At this point, the VNA reads S21
-            self.sendValueToOther('S21 - Enabled', False)
-            self.sendValueToOther('S21 - Enabled', True)
+            # The switches are set to the configuration needed to read the requested s-parameter
+            self.sendValueToOther('Current S-parameter', quant.name[-3:])
+            # At this point, the VNA reads "its" S21
             value = self.readValueFromOther('S21')
 
-        elif quant.name in ('S11 - Enabled', 'S21 - Enabled', 'S12 - Enabled',
-                          'S22 - Enabled'):
-            # update list of channels in use
-            self.getActiveMeasurements()
-            # get selected parameter
-            param = quant.name[:3]
-            value = (param in self.dMeasParam)
         elif quant.name in ('S11', 'S21', 'S12', 'S22'):
             # check if channel is on
             if quant.name not in self.dMeasParam:
@@ -160,14 +138,37 @@ class Driver(VISA_Driver):
             else:
                 # not enabled, return empty array
                 value = quant.getTraceDict([])
-        elif quant.name in ('Wait for new trace',):
+        elif quant.name in ('Wait for new trace', 'Current S-parameter'):
             # do nothing, return local value
             value = quant.getValue()
         else:
             # for all other cases, call VISA driver
             value = VISA_Driver.performGetValue(self, quant, options)
         return value
-        
+    
+    def enableVNAtrace(self, param: str):
+        # get updated list of measurements in use
+            self.getActiveMeasurements()
+            # clear old measurements for this parameter
+            if param in self.dMeasParam:
+                for name in self.dMeasParam[param]:
+                    self.writeAndLog("CALC:PAR:DEL '%s'" % name)
+            # create new measurement
+            newName = 'LabC_%s' % param
+            self.writeAndLog("CALC:PAR:SDEF '%s','%s'" % (newName, param))
+            # show on PNA screen
+            iTrace = 1 + ['S11', 'S21', 'S12', 'S22'].index(param)
+            self.writeAndLog("DISP:WIND:TRAC%d:FEED '%s'" % (iTrace, newName))
+            # add to dict with list of measurements
+            self.dMeasParam[param] = [newName]
+
+    def disableVNAtrace(self, param: str):
+        # get updated list of measurements in use
+            self.getActiveMeasurements()
+            # clear old measurements for this parameter
+            if param in self.dMeasParam:
+                for name in self.dMeasParam[param]:
+                    self.writeAndLog("CALC:PAR:DEL '%s'" % name)
 
     def getActiveMeasurements(self):
         """Retrieve and a list of measurement/parameters currently active"""
