@@ -43,7 +43,7 @@ class Driver(VISA_Driver):
             # read trace, return averaged data
             data = self.readValueFromOther(quant.name.split(' - ')[0])
             return np.mean(data['y'])
-        elif quant.name in ('S11', 'S21', 'S12', 'S22', 'a1/b1_2', 'a2/b2_1', 'A_2', 'B_1',):
+        elif quant.name in ('S11', 'S21', 'S12', 'S22', 'a1/b1_2', 'a2/b2_1', 'A_0', 'B_0',):
 
             # check if channel is on
             if quant.name not in self.dMeasParam:
@@ -74,7 +74,7 @@ class Driver(VISA_Driver):
                             sAverage = self.askAndLog('STAT:OPER:AVER1:COND?')
                             bDone = int(sAverage)>0
                         else:
-                            stb = int(self.askAndLog('*ESR?'))
+                            stb = int(self.ask('*ESR?'))
                             bDone = (stb & 1) > 0
                         if not bDone:
                             self.wait(0.1)
@@ -285,7 +285,7 @@ class Driver(VISA_Driver):
                 self.writeAndLog("CALC:PAR:EXT '%s','%s'" % (newName, param))
                 # show on PNA screen
                 #iTrace = 1 + ['S11', 'S21', 'S12', 'S22'].index(param)
-                iTrace = 1 + ['S11', 'S21', 'S12', 'S22', 'a2/b2_1', 'a1/b1_2', 'A_2', 'B_1'].index(param)
+                iTrace = 1 + ['S11', 'S21', 'S12', 'S22', 'a2/b2_1', 'a1/b1_2', 'A_0', 'B_0'].index(param)
 #                sPrev = self.askAndLog('DISP:WIND:CAT?')
 #                if sPrev.find('EMPTY')>0:
 #                    # no previous traces

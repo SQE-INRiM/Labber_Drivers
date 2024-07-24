@@ -64,11 +64,13 @@ class Driver(InstrumentDriver.InstrumentWorker):
             elif value == 'TRL':
                 quants = ['thru', 'relect', 'line']
             for quant in quants:
-                self.QSwitchDict[quant] = None
+                if quant not in self.QSwitchDict:
+                    self.QSwitchDict[quant] = None
         elif 'Position' in quant.name:
             standard_name = quant.name.replace('Position of ', '').replace(' standard', '')
             if standard_name in self.QSwitchDict.keys():
-                self.QSwitchDict[standard_name] = int(value)
+                self.QSwitchDict[standard_name] = quant.getValueIndex() #int(value)
+            self.myLog(f'Updating QSwitchDict in setValue: {self.QSwitchDict}')
         return value
 
     def performGetValue(self, quant, options={}):
@@ -101,8 +103,9 @@ class Driver(InstrumentDriver.InstrumentWorker):
                     self.dir = os.path.join(self.database, self.subfolder)
                     if not os.path.exists(self.dir):
                         os.makedirs(self.dir)
-                if self.getValue('Current switch throw') in self.QSwitchDict.values() and quant.name.endswith('S22'):
-                    
+
+                if self.getValue('Current switch throw')-1 in self.QSwitchDict.values() and quant.name.endswith('S22'):
+                    self.myLog('Starting to create S2P file')
 
                     # Fills an array with the 4 S-parameters
                     s = np.empty((len(self.frequency), 2, 2), dtype=complex)
@@ -111,17 +114,20 @@ class Driver(InstrumentDriver.InstrumentWorker):
                             s[:,i-1,j-1] = self.getValue(f'Input S{i}{j}')['y']
 
                     # Understands what standard it's dealing with
-                    current_standard = [standard_name for standard_name, throw in self.QSwitchDict.items() if throw == self.getValue('Current switch throw')][0]
-
+                    current_standard = [standard_name for standard_name, throw in self.QSwitchDict.items() if throw == self.getValue('Current switch throw')-1][0]
+                    self.myLog(f'{current_standard=}')
                     # Creates a network object, naming it as the standard placed on the switch path that is currently selected
                     Matrix = rf.Network(frequency=self.frequency, s=s, name=current_standard)
                     Matrix.write_touchstone(dir=self.dir, form='db')
                     self.myLog(f'Created s2p file for {current_standard} standard')
-                elif any(self.getValue('Current switch throw') == self.QSwitchDict.get(transmissive) for transmissive in ['reciprocal', 'thru']) and '/' in quant.name:
+
+                elif any(self.getValue('Current switch throw')-1 == self.QSwitchDict.get(transmissive) for transmissive in ['reciprocal', 'thru']) and '/' in quant.name:
                     sw_term = rf.Network(frequency=self.frequency, s=value['y'], name=quant.name.replace('/', '__').replace('Output ', ''))
                     sw_term.write_touchstone(dir=self.dir, form='db')
                     self.myLog(f"Created s1p file for {quant.name.replace('Output ', '')}")
-                    
+                
+                elif self.getValue('Current switch throw')-1 not in self.QSwitchDict.values():
+                    self.myLog(f'{self.QSwitchDict}')
         else:
             value = quant.getValue()
         

@@ -55,6 +55,119 @@ void setup() {
     digitalWrite(34,HIGH);
 }
 
+void closeAll(){ 
+  digitalWrite(2,HIGH); //Setting every pin to high
+    digitalWrite(3,HIGH);
+    digitalWrite(4,HIGH);
+    digitalWrite(5,HIGH);
+    digitalWrite(6,HIGH);
+    digitalWrite(7,HIGH);
+    digitalWrite(8,HIGH);
+    digitalWrite(22,HIGH);
+    digitalWrite(24,HIGH);
+    digitalWrite(26,HIGH);
+    digitalWrite(28,HIGH);
+    digitalWrite(30,HIGH);
+    digitalWrite(32,HIGH);
+    digitalWrite(34,HIGH);
+  delay(20);
+}
+
+void close(int circuit){
+  closeAll();
+  if (circuit == 1){
+    digitalWrite(3,LOW);
+    digitalWrite(22,LOW);
+    delay(myDelay);
+    digitalWrite(3,HIGH);
+    digitalWrite(22,HIGH);
+  }
+  else if (circuit == 2){ //the same with different pin numbers for the other circuits
+    digitalWrite(4,LOW);
+    digitalWrite(24,LOW);  
+    delay(myDelay);
+    digitalWrite(4,HIGH);
+    digitalWrite(24,HIGH);
+  }
+  else if (circuit == 3){
+    digitalWrite(5,LOW);
+    digitalWrite(26,LOW);
+    delay(myDelay);
+    digitalWrite(5,HIGH);
+    digitalWrite(26,HIGH);
+  }
+  else if (circuit == 4){
+    digitalWrite(6,LOW); 
+    digitalWrite(28,LOW);
+    delay(myDelay);
+    digitalWrite(6,HIGH);
+    digitalWrite(28,HIGH);
+  }
+  else if (circuit == 5){
+    digitalWrite(7,LOW); 
+    digitalWrite(30,LOW);
+    delay(myDelay);
+    digitalWrite(7,HIGH);
+    digitalWrite(30,HIGH);
+  }
+  else if (circuit == 6){
+    digitalWrite(8,LOW); 
+    digitalWrite(32,LOW);
+    delay(myDelay);
+    digitalWrite(8,HIGH);
+    digitalWrite(32,LOW);
+  }
+  closeAll();
+}
+
+
+void open(int circuit){
+  closeAll();
+  if (circuit == 1){
+    digitalWrite(2,LOW);
+    digitalWrite(24,LOW);
+    delay(myDelay);
+    digitalWrite(2,HIGH);
+    digitalWrite(24,HIGH);
+  }
+  else if (circuit == 2){ //the same with different pin numbers for the other circuits
+    digitalWrite(3,LOW);
+    digitalWrite(26,LOW);
+    delay(myDelay);
+    digitalWrite(3,HIGH);
+    digitalWrite(26,LOW);
+  }
+  else if (circuit == 3){
+    digitalWrite(4,LOW);
+    digitalWrite(28,LOW);
+    delay(myDelay);
+    digitalWrite(4,HIGH);
+    digitalWrite(28,HIGH);
+  }
+  else if (circuit == 4){
+    digitalWrite(5,LOW); 
+    digitalWrite(30,LOW);
+    delay(myDelay);
+    digitalWrite(5,HIGH);
+    digitalWrite(30,HIGH);
+  }
+  else if (circuit == 5){
+    digitalWrite(6,LOW); 
+    digitalWrite(32,LOW);
+    delay(myDelay);
+    digitalWrite(6,LOW);
+    digitalWrite(32,LOW);
+  }
+  else if (circuit == 6){
+    digitalWrite(7,LOW); 
+    digitalWrite(34,LOW);
+    delay(myDelay);
+    digitalWrite(7,HIGH);
+    digitalWrite(34,HIGH);
+  }
+  closeAll();
+}
+
 void reset(){
   closeAll();
   digitalWrite(3,LOW);
@@ -145,11 +258,16 @@ void loop() {
         else if(new_state >= 1 && new_state <= 6){ 
           // Reads the current state from the ROM and closes that circuit
           int old_state = EEPROM.read(state_address);
-          if (old_state != 0){
-            close(old_state);
+          if (old_state == new_state){
+            // do nothing
           }
-          open(new_state); 
-          EEPROM.write(state_address, new_state);
+          else {
+            if (old_state != 0){
+              close(old_state);
+            }
+            open(new_state); 
+            EEPROM.write(state_address, new_state);
+          }
         }
         else {
           Serial.println("You can't set the switches to state " + command.substring(command.length()-1)) + "! Choose an integar number between 1 and 6, instead";
@@ -167,114 +285,4 @@ void loop() {
   }
 }
 
-void closeAll(){ 
-  digitalWrite(2,HIGH); //Setting every pin to high
-    digitalWrite(3,HIGH);
-    digitalWrite(4,HIGH);
-    digitalWrite(5,HIGH);
-    digitalWrite(6,HIGH);
-    digitalWrite(7,HIGH);
-    digitalWrite(8,HIGH);
-    digitalWrite(22,HIGH);
-    digitalWrite(24,HIGH);
-    digitalWrite(26,HIGH);
-    digitalWrite(28,HIGH);
-    digitalWrite(30,HIGH);
-    digitalWrite(32,HIGH);
-    digitalWrite(34,HIGH);
-  delay(20);
-}
 
-void open(int circuit){
-  closeAll();
-  if (circuit == 1){
-    digitalWrite(2,LOW);
-    digitalWrite(24,LOW);
-    delay(myDelay);
-    digitalWrite(2,HIGH);
-    digitalWrite(24,HIGH);
-  }
-  else if (circuit == 2){ //the same with different pin numbers for the other circuits
-    digitalWrite(3,LOW);
-    digitalWrite(26,LOW);
-    delay(myDelay);
-    digitalWrite(3,HIGH);
-    digitalWrite(26,LOW);
-  }
-  else if (circuit == 3){
-    digitalWrite(4,LOW);
-    digitalWrite(28,LOW);
-    delay(myDelay);
-    digitalWrite(4,HIGH);
-    digitalWrite(28,HIGH);
-  }
-  else if (circuit == 4){
-    digitalWrite(5,LOW); 
-    digitalWrite(30,LOW);
-    delay(myDelay);
-    digitalWrite(5,HIGH);
-    digitalWrite(30,HIGH);
-  }
-  else if (circuit == 5){
-    digitalWrite(6,LOW); 
-    digitalWrite(32,LOW);
-    delay(myDelay);
-    digitalWrite(6,LOW);
-    digitalWrite(32,LOW);
-  }
-  else if (circuit == 6){
-    digitalWrite(7,LOW); 
-    digitalWrite(34,LOW);
-    delay(myDelay);
-    digitalWrite(7,HIGH);
-    digitalWrite(34,HIGH);
-  }
-  closeAll();
-}
-
-void close(int circuit){
-  closeAll();
-  if (circuit == 1){
-    digitalWrite(3,LOW);
-    digitalWrite(22,LOW);
-    delay(myDelay);
-    digitalWrite(3,HIGH);
-    digitalWrite(22,HIGH);
-  }
-  else if (circuit == 2){ //the same with different pin numbers for the other circuits
-    digitalWrite(4,LOW);
-    digitalWrite(24,LOW);  
-    delay(myDelay);
-    digitalWrite(4,HIGH);
-    digitalWrite(24,HIGH);
-  }
-  else if (circuit == 3){
-    digitalWrite(5,LOW);
-    digitalWrite(26,LOW);
-    delay(myDelay);
-    digitalWrite(5,HIGH);
-    digitalWrite(26,HIGH);
-  }
-  else if (circuit == 4){
-    digitalWrite(6,LOW); 
-    digitalWrite(28,LOW);
-    delay(myDelay);
-    digitalWrite(6,HIGH);
-    digitalWrite(28,HIGH);
-  }
-  else if (circuit == 5){
-    digitalWrite(7,LOW); 
-    digitalWrite(30,LOW);
-    delay(myDelay);
-    digitalWrite(7,HIGH);
-    digitalWrite(30,HIGH);
-  }
-  else if (circuit == 6){
-    digitalWrite(8,LOW); 
-    digitalWrite(32,LOW);
-    delay(myDelay);
-    digitalWrite(8,HIGH);
-    digitalWrite(32,LOW);
-  }
-  closeAll();
-}

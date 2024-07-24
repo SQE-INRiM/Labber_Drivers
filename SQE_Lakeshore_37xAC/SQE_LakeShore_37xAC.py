@@ -24,6 +24,13 @@ class Driver(VISA_Driver):
         try:
            # start by calling the generic VISA open to make sure we have a connection
            VISA_Driver.performOpen(self, options=options)
+           msg = self.askAndLog('INTYPE?')
+           pieces = msg.split(',')
+           if '2' in pieces[-1]:
+               self.log('The 1 at the end of the input type means that the preferred units are ohms')
+               pieces[-1] = pieces[-1].replace('2', '1')
+               self.writeAndLog(pieces.join(','))
+               self.log('Preferred units have been set to kelvins')
            
         except Error as e:
             # re-cast errors as a generic communication error
@@ -147,6 +154,11 @@ class Driver(VISA_Driver):
                 sCmd = 'RAMP %s,%s' %(str(dTempRamp), str(dTempRampRate))
                 self.writeAndLog(sCmd)
                 self.log('Command sent: ' + sCmd)
+                return value
+            
+            elif quant.name in ('Temperature Setpoint'):
+                self.log(f'Setting point to {value}')
+                self.writeAndLog(f'SETP {value}')
                 return value
 
             else:
@@ -311,6 +323,8 @@ class Driver(VISA_Driver):
                     else:
                         self.log(f'Returning the driver-stored value of {quant.name}')
                         return self.getValue(quant.name)
+                    
+                
 
                 elif name in ('Filter', 'Filter Settle Time', 'Filter Window'):
                     cmd = 'FILTER? %s' % str(channel)
@@ -391,6 +405,11 @@ class Driver(VISA_Driver):
                     value = float(listPIDStatus[1])
                 elif quant.name == 'D - Derivative':
                     value = float(listPIDStatus[2])
+                return value
+
+            elif quant.name in ('Temperature Setpoint'):
+                self.log(f'Asking set point')
+                self.askAndLog(f'SETP?')
                 return value
         
         except Error as e:
