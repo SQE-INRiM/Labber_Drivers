@@ -82,6 +82,32 @@ class Driver(VISA_Driver):
                     if self.isStopped():
                         self.writeAndLog('*CLS;:INIT:CONT ON;')
                         return []
+                # self.writeAndLog('CALC:MEAS:FORM MLOG')
+                # # get data as float32, convert to numpy array
+                # # old parameter handing
+                # self.write(':FORM REAL,32;CALC:DATA? SDATA', bCheckError=False)
+                # sData = self.read(ignore_termination=True)
+                # if bWaitTrace and not bAverage:
+                #     self.writeAndLog(':INIT:CONT ON;')
+                # # strip header to find # of points
+                # i0 = sData.find(b'#')
+                # nDig = int(sData[i0+1:i0+2])
+                # nByte = int(sData[i0+2:i0+2+nDig])
+                # nData = int(nByte/4)
+                # nPts = int(nData/2)
+                # # get data to numpy array
+                # vData = np.frombuffer(sData[(i0+2+nDig):(i0+2+nDig+nByte)], 
+                #                     dtype='>f', count=nData)
+                
+                # # data is in I0,Q0,I1,Q1,I2,Q2,.. format, convert to complex
+                # mC = vData.reshape((nPts,2))
+                # vComplex = mC[:,0] + 1j*mC[:,1]
+                # vector = vComplex  
+
+                # if quant.name in ('A_0', 'B_0',):
+                #     vector = np.abs(vector)
+                #     self.log(10*np.log10(np.max(vector)**2/1000))
+                
                 if quant.name in ('S11', 'S21', 'S12', 'S22', 'a1/b1_2', 'a2/b2_1'):
                     self.writeAndLog('CALC:MEAS:FORM MLOG')
                     # get data as float32, convert to numpy array
